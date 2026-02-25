@@ -390,6 +390,7 @@ for fcurve in action.fcurves:
 
 ---
 
+[Codigo Listo para ejecutar](escenarioProcedural)
 
 
 Bibliografía 
@@ -408,3 +409,4 @@ Bibliografía
 
 
 **¿Te gustaría que revisemos ahora los otros scripts secundarios (Flor de Vida o Polígonos 2D) o prefieres profundizar en algún detalle específico de este proyecto?**
+
