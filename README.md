@@ -390,7 +390,7 @@ for fcurve in action.fcurves:
 
 ---
 
-[Codigo Listo para ejecutar](escenarioProcedural)
+Para ver el código completo, consulta el [Escenario Procedural](escenarioProcedural.txt).
 
 
 Bibliografía 
