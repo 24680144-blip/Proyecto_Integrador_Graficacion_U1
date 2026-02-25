@@ -1,0 +1,149 @@
+import bpy
+import math
+
+def crear_material(nombre, color_rgb):
+    mat = bpy.data.materials.new(name=nombre)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs["Base Color"].default_value = (*color_rgb, 1.0)
+    mat.diffuse_color = (*color_rgb, 1.0)
+    return mat
+
+def generar_pasillo_curvo():
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+
+    mat_a = crear_material("ParedOscura",  (0.1, 0.1, 0.1))
+    mat_b = crear_material("ParedDetalle", (0.8, 0.2, 0.0))
+    mat_s = crear_material("Suelo",        (0.15, 0.15, 0.15))
+
+    ancho         = 3.0
+    paso          = 3.0
+    total_bloques = 60
+    altura_pared  = 3.0
+    grosor_pared  = 1.0
+
+    def offset_x(i):
+        x = 0.0
+        if 15 <= i <= 30:
+            t = (i - 15) / 15.0
+            x += 6.0 * (0.5 - 0.5 * math.cos(t * math.pi))
+        elif i > 30:
+            x += 6.0
+        if 38 <= i <= 53:
+            t = (i - 38) / 15.0
+            x -= 6.0 * (0.5 - 0.5 * math.cos(t * math.pi))
+        elif i > 53:
+            x -= 6.0
+        return x
+
+    def angulo_tangente(i):
+        dx = offset_x(min(i + 1, total_bloques - 1)) - offset_x(max(i - 1, 0))
+        dy = paso * 2
+        return math.atan2(dx, dy)
+
+    # ── Paredes ────────────────────────────────────────────────────────────
+    for i in range(total_bloques):
+        cx  = offset_x(i)
+        cy  = i * paso
+        rot = angulo_tangente(i)
+        fill_y = paso / max(math.cos(rot), 0.5)
+
+        if i % 2 == 0:
+            mat   = mat_a
+            esc_z = 1.0
+        else:
+            mat   = mat_b
+            esc_z = 1.5
+
+        bpy.ops.mesh.primitive_cube_add(location=(cx - ancho, cy, altura_pared / 2))
+        p = bpy.context.active_object
+        p.scale = (grosor_pared, fill_y / 2 + 0.1, esc_z)
+        p.rotation_euler.z = rot
+        p.data.materials.append(mat)
+
+        bpy.ops.mesh.primitive_cube_add(location=(cx + ancho, cy, altura_pared / 2))
+        p = bpy.context.active_object
+        p.scale = (grosor_pared, fill_y / 2 + 0.1, 1.0)
+        p.rotation_euler.z = rot
+        p.data.materials.append(mat_a)
+
+    # ── Suelo: malla procedural continua ──────────────────────────────────
+    verts = []
+    faces = []
+
+    for i in range(total_bloques):
+        cx  = offset_x(i)
+        cy  = i * paso
+        rot = angulo_tangente(i)
+
+        tx = math.sin(rot)
+        ty = math.cos(rot)
+        px = -ty
+        py =  tx
+
+        verts.append((cx + px * (-ancho), cy + py * (-ancho), 0))
+        verts.append((cx + px * ( ancho), cy + py * ( ancho), 0))
+
+    for i in range(total_bloques - 1):
+        a = i * 2
+        b = i * 2 + 1
+        c = i * 2 + 3
+        d = i * 2 + 2
+        faces.append((a, b, c, d))
+
+    mesh = bpy.data.meshes.new("SueloCurvo")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj_suelo = bpy.data.objects.new("SueloCurvo", mesh)
+    bpy.context.collection.objects.link(obj_suelo)
+    obj_suelo.data.materials.append(mat_s)
+
+    # ── Cámara con recorrido por el pasillo ───────────────────────────────
+    cam_data = bpy.data.cameras.new("CamaraPasillo")
+    cam_data.lens = 50
+    cam_obj  = bpy.data.objects.new("CamaraPasillo", cam_data)
+    bpy.context.collection.objects.link(cam_obj)
+    bpy.context.scene.camera = cam_obj
+
+    # Crear curva path que sigue el centro del pasillo
+    puntos_path = []
+    fps        = 24
+    duracion_s =  2 # segundos para recorrer todo el pasillo
+    total_frames = fps * duracion_s
+    bpy.context.scene.frame_start = 1
+    bpy.context.scene.frame_end   = total_frames
+
+    # Altura de cámara dentro del pasillo (ojos)
+    cam_z = 1.6
+
+    # Keyframe de posición y rotación en cada bloque
+    bloques_kf = total_bloques
+    for i in range(bloques_kf):
+        frame = int(1 + (i / (bloques_kf - 1)) * (total_frames - 1))
+
+        cx  = offset_x(i)
+        cy  = i * paso
+        rot = angulo_tangente(i)
+
+        cam_obj.location = (cx, cy, cam_z)
+        cam_obj.rotation_euler = (math.radians(90), 0, rot)
+
+        cam_obj.keyframe_insert(data_path="location",        frame=frame)
+        cam_obj.keyframe_insert(data_path="rotation_euler",  frame=frame)
+
+    # Suavizar interpolación de todos los keyframes
+    action = cam_obj.animation_data.action
+    for fcurve in action.fcurves:
+        for kp in fcurve.keyframe_points:
+            kp.interpolation = 'BEZIER'
+
+    # Ajustes de render para previsualización
+    bpy.context.scene.render.fps = fps
+    bpy.context.scene.render.resolution_x = 1280
+    bpy.context.scene.render.resolution_y = 720
+
+    print("✅ Pasillo generado. Pulsa ESPACIO en Blender para ver el recorrido.")
+
+generar_pasillo_curvo()
